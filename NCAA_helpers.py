@@ -3,14 +3,22 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import os
+import pickle
 pd.options.mode.copy_on_write = True
 
-team_df = pd.read_csv('NCAAteams.csv')
-plyr_df = pd.read_csv('NCAAplyrs.csv')
+team_df = pd.read_csv('mar25data/NCAAteams.csv')
+plyr_df = pd.read_csv('mar25data/NCAAplyrs.csv')
+
+with open("teamstats.pkl", "rb") as f:
+    tm_stats = pickle.load(f)
 
 def update_data():
     team_df = pd.read_csv('NCAAteams.csv')
     plyr_df = pd.read_csv('NCAAplyrs.csv')
+
+def read_alt(path):
+    team_df = pd.read_csv(path + '/NCAAteams.csv')
+    plyr_df = pd.read_csv(path + '/NCAAplyrs.csv')
 
 teams = pd.concat([team_df.home_team,team_df.away_team], axis=0).unique()
 
@@ -32,6 +40,21 @@ def PtAdds(df, nm):
     df["TotalPts"] = df.PtsFor + df.PtsAgainst
     df["Opp"] = df.apply(addOpp, axis=1, args=(nm,))
     return df
+
+def tm_descriptive(team):
+    tm = team_df[np.logical_or(team_df.home_team == team, team_df.away_team == team)]
+    tm = PtAdds(tm, team)
+    tm["Spread"] = tm.PtsFor - tm.PtsAgainst
+    tm["Win"] = np.where(tm.PtsFor > tm.PtsAgainst, True, False)
+    d = {"AvgPtsFor":tm.PtsFor.mean(), "StdPtsFor":tm.PtsFor.std(),
+         "AvgPtsAgainst":tm.PtsAgainst.mean(), "StdPtsAgainst":tm.PtsAgainst.std(),
+         "AvgTotalPts":tm.TotalPts.mean(), "StdTotalPts":tm.TotalPts.std(),
+         "WinPct":tm.Win.mean(), 
+         "AvgWinSpread" : tm[tm.Win].Spread.mean(), "StdWinSpread":tm[tm.Win].Spread.std(),
+         "AvgLossSpread":tm[np.logical_not(tm.Win)].Spread.mean(), "StdLossSpread":tm[np.logical_not(tm.Win)].Spread.std(),
+         "AvgSpread":tm.Spread.mean(), "StdSpread":tm.Spread.std()}
+    tm_stats[team] = d
+    return d
 
 # Search teams for substring s. DataFrame is default Players DataFrame
 def tm_search(s, df=plyr_df):
@@ -81,7 +104,7 @@ def create_game_data(team_tuples):
             print(f"No team found for {tm2}")
             fail = True
         if fail:
-            return None
+            continue
             
         tm1 = nm1[0]
         tm2 = nm2[0]
@@ -135,6 +158,13 @@ def regress_prop(df, x, y, prop, k=0, build=True, prefix=None, show=False, loc=N
         plt.show()
     return fit
 
+def chiSquare(x, y):
+    quads = [ [x.sum(), y.sum()], [np.logical_not(x).sum(), np.logical_not(y).sum()]]
+    return stats.chisquare(quads)
+    # crosstab = pd.crosstab(df[x], df[y])
+    # chi2, p, dof, ex = stats.chi2_contingency(crosstab)
+    # return chi2, p, dof, ex
+
 def process_games(daysSlate, outputLocation, spreadDict = None):
     prod = {}
     os.makedirs(outputLocation, exist_ok=True)
@@ -151,168 +181,44 @@ def process_games(daysSlate, outputLocation, spreadDict = None):
             tar = None
             sprd = 0
             if t1 in kys:
-                d = {t1 : spreadDict[t1], t2 : -1*spreadDict[t1]}
+                d = {t1 : -1*spreadDict[t1], t2 : spreadDict[t1]}
             else:
-                d = {t1 : -1*spreadDict[t2], t2 : spreadDict[t2]}
+                d = {t1 : spreadDict[t2], t2 : -1*spreadDict[t2]}
 
+            def innerfunc(t, ax1, ax2):
+                fit = regress_prop(gm[t]["team"], "PtsFor", "TotalPts", prop="Spread", k=d[t],
+                                build=False, show=False, save=False)
+                ax1.scatter(gm[t]["team"]["PtsFor"], gm[t]["team"]["TotalPts"],
+                            c = np.where(gm[t]["team"]["Spread"] > d[t], 'Green', 'Red'),
+                            s = 1 + abs(gm[t]["team"]["Spread"]))
+                ax1.plot(gm[t]['team']['PtsFor'].mean()*np.ones(len(gm[t]['team']['PtsFor'])),
+                            gm[t]['team']['TotalPts'], color='Orange', label='PtsFor Mean')
+                ax1.plot(gm[t]['team']['PtsFor'], gm[t]['team']['TotalPts'].mean()*np.ones(len(gm[t]['team']['PtsFor'])),
+                            color='Blue', label='TotalPts Mean')
+                ax1.plot(gm[t]["team"]["PtsFor"], fit[0][0]*gm[t]["team"]["PtsFor"] + fit[0][1], color='Black', label="Regression Line")
+                ax1.set_title(t + "\nTotalPts vs PtsFor")
+                ax1.legend()
+                
+                ax2.scatter(gm[t]["team"]["PtsFor"],
+                            gm[t]["team"]["TotalPts"] - (fit[0][0]*gm[t]["team"]["PtsFor"] + fit[0][1]),
+                            c = np.where(gm[t]["team"]["Spread"] > d[t], 'Green', 'Red'),
+                            s = 1 + abs(gm[t]["team"]["Spread"]))
+                ax2.plot(gm[t]["team"]["PtsFor"], [0]*len(gm[t]["team"]["PtsFor"]), color='Black')
+                ax2.set_title('Residuals')
+                ax2.legend()
+
+                return fit, ax1, ax2
             
+            fig, axes = plt.subplots(2,2, figsize=(15,7.5))
 
-            # if t1 is in spreadDict, t1 is the target
-            if t1 in kys:
+            for i, tm in enumerate(gm.keys()):
+                fit, regax, resax = innerfunc(tm, axes[0][i], axes[1][i])
             
-                tar = t1
-                sprd = spreadDict[t1]
-            
-                # begin dependence on spread direction
-                t1_ForVsTotal = regress_prop(gm[t1]["team"], "PtsFor", "TotalPts",
-                                                prop="Spread", k=sprd,
-                                                build=False, show=False,
-                                                save=False)
-            
-                t2_ForVsTotal = regress_prop(gm[t2]["team"], "PtsFor", "TotalPts", 
-                                                prop="Spread", k=-1*sprd,
-                                                build=False, show=False,
-                                                save=False)
-                # end dependence on spread direction
+            title = " vs. ".join([t for t in gm.keys()]) + f" with {t1} {d[t1]}"
+            fig.suptitle(title)
 
-                fig, axes = plt.subplots(1,2, figsize=(15,7.5))
-                axes[0].plot(gm[t1]["team"]["PtsFor"],
-                             t1_ForVsTotal[0][0]*gm[t1]["team"]["PtsFor"] + t1_ForVsTotal[0][1], 
-                             color='Black', label="Regression Line")
-                
-                # begin dependence on spread direction
-                axes[0].scatter(gm[t1]["team"]["PtsFor"], 
-                                gm[t1]["team"]["TotalPts"],
-                                c = np.where(gm[t1]["team"]["Spread"] > sprd, 'Green', 'Red'),
-                                s = 1 + abs(gm[t1]["team"]["Spread"]))
-                axes[0].plot(gm[t1]['team']['PtsFor'].mean()*np.ones(len(gm[t1]['team']['PtsFor'])),
-                                gm[t1]['team']['TotalPts'], color='Orange', label='PtsFor Mean')
-                axes[0].plot(gm[t1]['team']['PtsFor'], gm[t1]['team']['TotalPts'].mean()*np.ones(len(gm[t1]['team']['PtsFor'])),
-                                color='Blue', label='TotalPts Mean')
-                axes[0].set_title(f'{t1} PtsFor vs TotalPts; Spread > {sprd}')
-                axes[0].legend()
-                axes[1].plot(gm[t2]["team"]["PtsFor"],
-                             t2_ForVsTotal[0][0]*gm[t2]["team"]["PtsFor"] + t2_ForVsTotal[0][1], 
-                             color='Black', label="Regression Line")
-                axes[1].scatter(gm[t2]["team"]["PtsFor"], 
-                                gm[t2]["team"]["TotalPts"],
-                                c = np.where(gm[t2]["team"]["Spread"] > -1*sprd, 'Green', 'Red'),
-                                s = 1 + abs(gm[t2]["team"]["Spread"]))
-                axes[1].set_title(f'{t2} PtsFor vs TotalPts; Spread > {-1*sprd}')
-                axes[1].plot(gm[t2]['team']['PtsFor'].mean()*np.ones(len(gm[t2]['team']['PtsFor'])),
-                                gm[t2]['team']['TotalPts'], color='Orange', label='PtsFor Mean')
-                axes[1].plot(gm[t2]['team']['PtsFor'], gm[t2]['team']['TotalPts'].mean()*np.ones(len(gm[t2]['team']['PtsFor'])),
-                                color='Blue', label='TotalPts Mean')
-                # end dependence on spread direction
-
-                fig.suptitle(f'{t1} vs {t2} with {tar} > {sprd}')
-
-                fname = f'{t1}_vs_{t2}_with_{tar}_regression.png'
-                
-                if outputLocation != None:
-                    fname = outputLocation + "/" +fname
-                
-                fig.savefig(fname)
-                plt.close(fig)
-                # plot residuals
-                fig, axes = plt.subplots(1,2, figsize=(15,7.5))
-                axes[0].scatter(gm[t1]["team"]["PtsFor"],
-                                gm[t1]["team"]["TotalPts"] - (t1_ForVsTotal[0][0]*gm[t1]["team"]["PtsFor"] + t1_ForVsTotal[0][1]),
-                                c = np.where(gm[t1]["team"]["Spread"] > sprd, 'Green', 'Red'),
-                                s = 1 + abs(gm[t1]["team"]["Spread"]))
-                axes[0].set_title(f'{t1} TotalPts vs PtsFor Residuals')
-                axes[0].plot(gm[t1]["team"]["PtsFor"], [0]*len(gm[t1]["team"]["PtsFor"]), color='Black')
-                axes[1].scatter(gm[t2]["team"]["PtsFor"],
-                                gm[t2]["team"]["TotalPts"] - (t2_ForVsTotal[0][0]*gm[t2]["team"]["PtsFor"] + t2_ForVsTotal[0][1]),
-                                c = np.where(gm[t2]["team"]["Spread"] > -1*sprd, 'Green', 'Red'),
-                                s = 1 + abs(gm[t2]["team"]["Spread"]))
-                axes[1].set_title(f'{t2} TotalPts vs PtsFor Residuals')
-                axes[1].plot(gm[t2]["team"]["PtsFor"], [0]*len(gm[t2]["team"]["PtsFor"]), color='Black')
-
-                fig.suptitle = f'{t1} vs {t2} with {tar} > {sprd} Residuals'
-
-                fname = f'{t1}_vs_{t2}_with_{tar}_residuals.png'
-                
-                if outputLocation != None:
-                    fname = outputLocation + "/" +fname
-                
-                fig.savefig(fname)
-                plt.close(fig)
-            elif t2 in kys:
-                tar = t2
-                sprd = spreadDict[t2]
-                t1_ForVsTotal = regress_prop(gm[t1]["team"], "PtsFor", "TotalPts",
-                                                prop="Spread", k=-1*sprd,
-                                                build=False, show=False,
-                                                save=False, prefix=t1)
-                t2_ForVsTotal = regress_prop(gm[t2]["team"], "PtsFor", "TotalPts", 
-                                                prop="Spread", k=sprd,
-                                                build =False, prefix=t2)
-                fig, axes = plt.subplots(1,2, figsize=(15,7.5))
-                axes[0].plot(gm[t1]["team"]["PtsFor"],
-                             t1_ForVsTotal[0][0]*gm[t1]["team"]["PtsFor"] + t1_ForVsTotal[0][1], 
-                             color='Black', label="Regression Line")
-                axes[0].scatter(gm[t1]["team"]["PtsFor"], 
-                                gm[t1]["team"]["TotalPts"],
-                                c = np.where(gm[t1]["team"]["Spread"] > -1*sprd, 'Green', 'Red'),
-                                s = 1 + abs(gm[t1]["team"]["Spread"]))
-                axes[0].plot(gm[t1]['team']['PtsFor'].mean()*np.ones(len(gm[t1]['team']['PtsFor'])),
-                                gm[t1]['team']['TotalPts'], color='Orange', label='PtsFor Mean')
-                axes[0].plot(gm[t1]['team']['PtsFor'], gm[t1]['team']['TotalPts'].mean()*np.ones(len(gm[t1]['team']['PtsFor'])),
-                                color='Blue', label='TotalPts Mean')
-                axes[0].set_title(f'{t1} PtsFor vs TotalPts; Spread > {-1*sprd}')
-                axes[0].legend()
-                axes[1].plot(gm[t2]["team"]["PtsFor"],
-                             t2_ForVsTotal[0][0]*gm[t2]["team"]["PtsFor"] + t2_ForVsTotal[0][1], 
-                             color='Black', label="Regression Line")
-                axes[1].scatter(gm[t2]["team"]["PtsFor"], 
-                                gm[t2]["team"]["TotalPts"],
-                                c = np.where(gm[t2]["team"]["Spread"] > sprd, 'Green', 'Red'),
-                                s = 1 + abs(gm[t2]["team"]["Spread"]))
-                axes[1].set_title(f'{t2} PtsFor vs TotalPts; Spread > {sprd}')
-                axes[1].plot(gm[t2]['team']['PtsFor'].mean()*np.ones(len(gm[t2]['team']['PtsFor'])),
-                                gm[t2]['team']['TotalPts'], color='Orange', label='PtsFor Mean')
-                axes[1].plot(gm[t2]['team']['PtsFor'], gm[t2]['team']['TotalPts'].mean()*np.ones(len(gm[t2]['team']['PtsFor'])),
-                                color='Blue', label='TotalPts Mean')
-                
-                fig.suptitle(f'{t1} vs {t2} with {tar} > {sprd}')
-
-                fname = f'{t1}_vs_{t2}_with_{tar}_regression.png'
-
-                if outputLocation != None:
-                    fname = outputLocation + "/" +fname
-
-                fig.savefig(fname)
-                plt.close(fig)
-                # plot residuals
-                fig, axes = plt.subplots(1,2, figsize=(15,7.5))
-                axes[0].scatter(gm[t1]["team"]["PtsFor"],
-                                gm[t1]["team"]["TotalPts"] - (t1_ForVsTotal[0][0]*gm[t1]["team"]["PtsFor"] + t1_ForVsTotal[0][1]),
-                                c = np.where(gm[t1]["team"]["Spread"] > -1*sprd, 'Green', 'Red'),
-                                s = 1 + abs(gm[t1]["team"]["Spread"]))
-                axes[0].set_title(f'{t1} TotalPts vs PtsFor Residuals')
-                axes[0].plot(gm[t1]["team"]["PtsFor"], [0]*len(gm[t1]["team"]["PtsFor"]), color='Black')
-                axes[1].scatter(gm[t2]["team"]["PtsFor"],
-                                gm[t2]["team"]["TotalPts"] - (t2_ForVsTotal[0][0]*gm[t2]["team"]["PtsFor"] + t2_ForVsTotal[0][1]),
-                                c = np.where(gm[t2]["team"]["Spread"] > sprd, 'Green', 'Red'),
-                                s = 1 + abs(gm[t2]["team"]["Spread"]))
-                axes[1].set_title(f'{t2} TotalPts vs PtsFor Residuals')
-                axes[1].plot(gm[t2]["team"]["PtsFor"], [0]*len(gm[t2]["team"]["PtsFor"]), color='Black')
-
-                fig.suptitle = f'{t1} vs {t2} with {tar} > {sprd} Residuals'
-
-                fname = f'{t1}_vs_{t2}_with_{tar}_residuals.png'
-
-                if outputLocation != None:
-                    fname = outputLocation + "/" +fname
-
-                fig.savefig(fname)
-                plt.close(fig)
-        else:
-            t1_ForVsTotal = regression(t1, "PtsFor", "TotalPts")
-            t2_ForVsTotal = regression(t2, "PtsFor", "TotalPts")
-        
-        prod[(t1,t2)] = (t1_ForVsTotal, t2_ForVsTotal)
+            fname = "_".join([t for t in gm.keys()]) + f"_with_{tar}_regression.png"
+            fig.savefig(f"{outputLocation}/{fname}")
 
         fig, axes = plt.subplots(1, 2)
 
@@ -336,4 +242,55 @@ def process_games(daysSlate, outputLocation, spreadDict = None):
         fig.savefig(fname)
         plt.close(fig)
 
-    return prod
+"""
+Build a function to generate a random forest from a function that takes the following parameters:
+    - DataFrame
+    - List of Features
+    - Target Feature
+    - Number of Trees
+    - Max Depth
+    - Min Samples Split
+    - Min Samples Leaf
+    - Random State
+    Return 
+    - Random Forest
+"""
+
+def build_forest(df, numeric_features, target, categorical_features=None, n_trees=100, max_depth=None, min_samples_split=2, min_samples_leaf=1, random_state=None):
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.preprocessing import StandardScaler, LabelEncoder
+
+
+    forest = RandomForestClassifier(n_estimators=n_trees, max_depth=max_depth, min_samples_split=min_samples_split,
+                                    min_samples_leaf=min_samples_leaf, random_state=random_state)
+    
+    
+    X_num = df[numeric_features]
+    y_train = df[target]
+    le = LabelEncoder()
+    X_cat = df[categorical_features] if categorical_features != None else None
+
+    if categorical_features != None:
+        catshp = X_cat.shape
+        X_cat_cols = X_cat.columns
+        X_cat = X_cat.to_numpy()
+        X_cat = X_cat.reshape(-1, 1)
+        X_cat = le.fit_transform(X_cat).reshape(*catshp)
+        X_cat = pd.DataFrame(X_cat, columns=X_cat_cols)
+
+    X_cat.index = X_num.index
+    X_train = pd.concat([X_num, X_cat], axis=1) if categorical_features != None else X_num
+    X_train.fillna(0, inplace=True)
+    forest.fit(X_train, df[target])
+
+    if categorical_features != None:
+        catshp = X_cat.shape
+        X_cat_cols = X_cat.columns
+        X_cat = X_cat.to_numpy()
+        X_cat = X_cat.reshape(-1, 1)
+        X_cat = le.inverse_transform(X_cat).reshape(*catshp)
+        X_cat = pd.DataFrame(X_cat, columns=X_cat_cols)
+        X_cat.index = X_num.index
+        X_train = pd.concat([X_num, X_cat], axis=1)
+
+    return forest
