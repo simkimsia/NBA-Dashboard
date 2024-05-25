@@ -141,7 +141,7 @@ else:
         Team_Dict = get_team_data(selected_team)
 
     def plot_team_data(team, stat):
-        df = team_data_cleaned[team]
+        df = Team_Dict[team]
         if df.empty:
             st.error(f"No data available for {team}. Please try another team.")
             return None
