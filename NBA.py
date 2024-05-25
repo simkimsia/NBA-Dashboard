@@ -3,7 +3,7 @@
 
 import plotly.express as px
 import streamlit as st
-from nba_api.stats.static import players
+from nba_api.stats.static import players, teams
 
 from interfaces.nba_stats import fetch_data_with_delays, fetch_team_data_with_delays
 from NBA_helpers import clean_df
@@ -57,11 +57,24 @@ team_stats = [
     "PF",
 ]
 
-# Example team IDs, replace with actual values
-team_ids = {"Lakers": "1610612747", "Nuggets": "1610612743"}
+team_data = teams.get_teams()
+Teams_IDs = {team["full_name"]: team["id"] for team in team_data}
+team_data = fetch_team_data_with_delays(team_ids)
+team_data_cleaned = {key: clean_df(val) for key, val in team_data.items()}
+
+
+player_data = players.get_players()
+active_players = [player for player in player_data if player["is_active"]]
+Player_IDs = {player["full_name"]: player["id"] for player in active_players}
+player_data = fetch_data_with_delays(Player_IDs)
+player_data_cleaned = {key: clean_df(val) for key, val in player_data.items()}
+
+
+# # Example team IDs, replace with actual values
+# team_ids = {"Lakers": "1610612747", "Nuggets": "1610612743"}
 
 # Fetch game log data for teams with delays
-team_data = fetch_team_data_with_delays(team_ids)
+team_data = fetch_team_data_with_delays(Teams_IDs)
 
 st.title("NBA Visualization")
 
@@ -69,18 +82,12 @@ st.title("NBA Visualization")
 view_mode = st.radio("View Mode", ["Player Stats", "Team Stats"])
 
 
-if view_mode == "Player Stats":
-    # Fetch player IDs dynamically when Player Stats is selected
-    plyrs = players.get_players()
-    r = {
-        nm: players.find_players_by_full_name(nm)[0]["id"]
-        for nm in player_names
-        if players.find_players_by_full_name(nm)
-    }
+    # Lets not fetch data dynamically, the only advantage that will provide is for
+    # streaming; that should be a premium feauture of our end product
 
-    # Fetch and clean player data
-    player_data = fetch_data_with_delays(r)
-    player_data_cleaned = {key: clean_df(val) for key, val in player_data.items()}
+    # Also, I think this current view_mode branching makes the code a bit long unnecessarily
+
+if view_mode == "Player Stats":
 
     selected_stat = st.selectbox("Select Stat", player_stats)
     selected_player = st.selectbox("Select Player", player_names)
@@ -105,8 +112,6 @@ if view_mode == "Player Stats":
 
 else:
     # Only fetch team data if the Team Stats view is selected
-    team_data = fetch_team_data_with_delays(team_ids)
-    team_data_cleaned = {key: clean_df(val) for key, val in team_data.items()}
 
     selected_stat = st.selectbox("Select Team Stat", team_stats)
     selected_team = st.selectbox("Select Team", list(team_ids.keys()))
