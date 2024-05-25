@@ -4,6 +4,7 @@
 import plotly.express as px
 import streamlit as st
 from nba_api.stats.static import players, teams
+from pandas import DataFrame
 
 from interfaces.nba_stats import fetch_data_with_delays, fetch_team_data_with_delays
 from NBA_helpers import clean_df
@@ -59,15 +60,32 @@ team_stats = [
 
 team_data = teams.get_teams()
 Teams_IDs = {team["full_name"]: team["id"] for team in team_data}
-team_data = fetch_team_data_with_delays(team_ids)
-team_data_cleaned = {key: clean_df(val) for key, val in team_data.items()}
+Team_Dict = {}
+# team_data = fetch_team_data_with_delays(team_ids)
+# team_data_cleaned = {key: clean_df(val) for key, val in team_data.items()}
 
 
 player_data = players.get_players()
 active_players = [player for player in player_data if player["is_active"]]
 Player_IDs = {player["full_name"]: player["id"] for player in active_players}
-player_data = fetch_data_with_delays(Player_IDs)
-player_data_cleaned = {key: clean_df(val) for key, val in player_data.items()}
+Player_Dict = {}
+# player_data_cleaned = {key: clean_df(val) for key, val in player_data.items()}
+
+@st.cache_data
+def get_team_data(team_name):
+    tmp = fetch_team_data_with_delays({team_name: Teams_IDs[team_name]})
+    tmp_cln = {team_name : clean_df(tmp[team_name])}
+    Team_Dict.update(tmp_cln)
+    return Team_Dict
+
+@st.cache_data
+def get_player_data(player_name):
+    tmp = fetch_data_with_delays({player_name: Player_IDs[player_name]})
+    tmp_cln = {player_name : clean_df(tmp[player_name])}
+    Player_Dict.update(tmp_cln)
+    return Player_Dict
+
+# get_player_data("Jamal Murray")
 
 
 # # Example team IDs, replace with actual values
@@ -92,8 +110,11 @@ if view_mode == "Player Stats":
     selected_stat = st.selectbox("Select Stat", player_stats)
     selected_player = st.selectbox("Select Player", player_names)
 
+    if not selected_player in Player_Dict.keys():
+        Player_Dict = get_player_data(selected_player)
+
     def plot_data(player, stat):
-        df = player_data_cleaned[player]
+        df = Player_Dict[player]
         if df.empty:
             st.error(f"No data available for {player}. Please try another player.")
             return None
@@ -114,7 +135,10 @@ else:
     # Only fetch team data if the Team Stats view is selected
 
     selected_stat = st.selectbox("Select Team Stat", team_stats)
-    selected_team = st.selectbox("Select Team", list(team_ids.keys()))
+    selected_team = st.selectbox("Select Team", list(Teams_IDs.keys()))
+
+    if selected_team not in Team_Dict.keys():
+        Team_Dict = get_team_data(selected_team)
 
     def plot_team_data(team, stat):
         df = team_data_cleaned[team]
