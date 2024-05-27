@@ -92,19 +92,20 @@ def get_player_data(player_name):
     Player_Dict.update(tmp_cln)
     return Player_Dict
 
-# Fetch game log data for teams with delays
-team_data = fetch_team_data_with_delays(Teams_IDs)
-
-st.title("NBA Visualization")
-
 def date_slider(dates):
     min_date = dates.min().to_pydatetime()
     max_date = dates.max().to_pydatetime()
     step = datetime.timedelta(days=1)
     return st.slider("Select Date Range", value=(min_date,max_date), step=step, format='MMM DD, YYYY')
 
+# Fetch game log data for teams with delays
+team_data = fetch_team_data_with_delays(Teams_IDs)
+
+st.title("NBA Visualization")
+
+
 page_select = st.selectbox("Select Page", ["Simple Graphs", "ML Models",
-                                          "Simulations"])
+                                          "Simulations"], index=0)
 
 if page_select == "Simple Graphs":
     st.write("Simple Graphs Page")
@@ -190,6 +191,41 @@ if page_select == "Simple Graphs":
 
 elif page_select == "ML Models":
     st.write("ML Models Page")
+    st.selectbox("Select Model", ["K-Nearest Neighbors", "Support Vector Machine"])
+
+    inputs = []
+    X = DataFrame()
+
+    @st.cache_data
+    def select_X(Player_Dict=Player_Dict, Team_Dict=Team_Dict):
+        nms = [x["full_name"] for x in active_players]
+        obj_opts = nms + list(Teams_IDs.keys())
+        select_obj = st.selectbox("Select Entity", obj_opts)
+
+
+        col1, col2 = st.columns(2)
+
+        is_Player = select_obj in nms
+        
+        if is_Player:
+            i = 0
+            select_stat = st.selectbox("Select Input", player_stats)
+            if not select_obj in Player_Dict.keys():
+                Player_Dict = get_player_data(select_obj)
+            df = Player_Dict[select_obj]
+            X = concat([X, df[select_stat]], axis=1)
+
+            with col1:
+                txt = st.write(select_stat, key=f"stat_{i}")
+            
+            with col2:
+                bt = st.button("Dead Code-Remove Stat")
+            
+            st.write(X.columns)
+
+            
+            return (txt, bt)
+    inputs.append(select_X())
 
 elif page_select == "Simulations":
     st.write("Simulations Page")
