@@ -23,7 +23,7 @@ def fetch_data_with_delays(player_ids):
     """Fetches game logs for multiple players with a delay between each request to prevent rate limits."""
     data = {}
     for player_name, player_id in player_ids.items():
-        data[player_name] = get_player_game_log(player_id)
+        data[player_name] = clean_df(get_player_game_log(player_id))
         time.sleep(1)  # Sleep for 1 second between requests to comply with rate limits
     return data
 
