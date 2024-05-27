@@ -10,19 +10,24 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from sklearn.inspection import DecisionBoundaryDisplay
 from sklearn.preprocessing import OrdinalEncoder
+import datetime
 
 from interfaces.nba_stats import fetch_data_with_delays, fetch_team_data_with_delays
 from NBA_helpers import clean_df
 
+# dummy data below
+#region
 # Example team and player setup
-team_ids = {"Lakers": "1610612747", "Nuggets": "1610612743"}
-player_names = [
-    "Jamal Murray",
-    "Nikola Jokic",
-    "Kentavious Caldwell",
-    "Paul George",
-    "Mason Plumlee",
-]
+# team_ids = {"Lakers": "1610612747", "Nuggets": "1610612743"}
+# player_names = [
+#     "Jamal Murray",
+#     "Nikola Jokic",
+#     "Kentavious Caldwell",
+#     "Paul George",
+#     "Mason Plumlee",
+# ]
+#endregion
+
 
 # Define stats options
 player_stats = [
@@ -92,80 +97,102 @@ team_data = fetch_team_data_with_delays(Teams_IDs)
 
 st.title("NBA Visualization")
 
-# Toggle between Player and Team Stats
-view_mode = st.radio("View Mode", ["Player Stats", "Team Stats"])
+def date_slider(dates):
+    min_date = dates.min().to_pydatetime()
+    max_date = dates.max().to_pydatetime()
+    step = datetime.timedelta(days=1)
+    return st.slider("Select Date Range", value=(min_date,max_date), step=step, format='MMM DD, YYYY')
 
-# ML methods should be made available inside of an ML Specific view
-# region
-# """ 
-# knn = st.checkbox("K-Nearest Neighbors Clustering")
-# svc = st.checkbox("Support Vector Machine")
+page_select = st.selectbox("Select Page", ["Simple Graphs", "ML Models",
+                                          "Simulations"])
 
-# kmn = st.checkbox("K-Means Clustering") """
+if page_select == "Simple Graphs":
+    st.write("Simple Graphs Page")
 
-    # Lets not fetch data dynamically, the only advantage that will provide is for
-    # streaming; that should be a premium feauture of our end product
+    # Toggle between Player and Team Stats
+    view_mode = st.radio("View Mode", ["Player Stats", "Team Stats"])
 
-    # Also, I think this current view_mode branching makes the code a bit long unnecessarily
-# endregion
+    # ML methods should be made available inside of an ML Specific view
+    # region
+    # """ 
+    # knn = st.checkbox("K-Nearest Neighbors Clustering")
+    # svc = st.checkbox("Support Vector Machine")
 
-def view_team_stats(Team_Dict=Team_Dict):
-    selected_stat = st.selectbox("Select Team Stat", team_stats)
-    selected_team = st.selectbox("Select Team", list(Teams_IDs.keys()))
+    # kmn = st.checkbox("K-Means Clustering") """
 
-    if selected_team not in Team_Dict.keys():
-        Team_Dict = get_team_data(selected_team)
+        # Lets not fetch data dynamically, the only advantage that will provide is for
+        # streaming; that should be a premium feauture of our end product
 
-    def plot_team_data(team, stat):
-        df = Team_Dict[team]
-        if df.empty:
-            st.error(f"No data available for {team}. Please try another team.")
-            return None
-        if stat not in df.columns:
-            st.error(f"Stat {stat} not available. Please choose another stat.")
-            return None
-        fig = px.line(
-            df,
-            x="GAME_DATE",  # Make sure this column exists and is in the correct format
-            y=stat,  # This will now reference an existing column correctly
-            title=f"{team} {stat} by Game",
-        )
-        return fig
-    return (selected_team, selected_stat, plot_team_data)
+        # Also, I think this current view_mode branching makes the code a bit long unnecessarily
+    # endregion
+
+    def view_team_stats(Team_Dict=Team_Dict):
+        selected_stat = st.selectbox("Select Team Stat", team_stats)
+        selected_team = st.selectbox("Select Team", list(Teams_IDs.keys()))
+
+        if selected_team not in Team_Dict.keys():
+            Team_Dict = get_team_data(selected_team)
+
+        def plot_team_data(team, stat):
+            df = Team_Dict[team]
+            if df.empty:
+                st.error(f"No data available for {team}. Please try another team.")
+                return None
+            if stat not in df.columns:
+                st.error(f"Stat {stat} not available. Please choose another stat.")
+                return None
+            fig = px.line(
+                df,
+                x="GAME_DATE",  # Make sure this column exists and is in the correct format
+                y=stat,  # This will now reference an existing column correctly
+                title=f"{team} {stat} by Game",
+            )
+            return fig
+        return (selected_team, selected_stat, plot_team_data)
 
 
-def view_player_stats(Player_Dict=Player_Dict):
-    selected_stat = st.selectbox("Select Stat", player_stats)
-    selected_player = st.selectbox("Select Player", list(Player_IDs.keys()))
-
-    if not selected_player in Player_Dict.keys():
-        Player_Dict = get_player_data(selected_player)
-
-    def plot_data(player, stat):
-        df = Player_Dict[player]
-        if df.empty:
-            st.error(f"No data available for {player}. Please try another player.")
-            return None
+    def view_player_stats(Player_Dict=Player_Dict):
+        selected_stat = st.selectbox("Select Stat", player_stats)
+        selected_player = st.selectbox("Select Player", list(Player_IDs.keys()))
         
-        fig = px.scatter(
-                            df,
-                            x="GameDate",
-                            y=stat,
-                            color="WL",
-                            color_discrete_sequence=["red", "green"],
-                            title=f"{player} {stat} by Game",
-                        )
-        return fig
-    
-    return (selected_player, selected_stat, plot_data)
-                        
-if view_mode == "Player Stats":
-    selection, selected_stat, plot_data = view_player_stats()
-else:
-    selection, selected_stat, plot_data = view_team_stats()
+        if not selected_player in Player_Dict.keys():
+            Player_Dict = get_player_data(selected_player)
+        Player_df = Player_Dict[selected_player]
+        slider = date_slider(Player_df["GameDate"])
 
-fig = plot_data(selection, selected_stat)
-st.plotly_chart(fig)
+        def plot_data(player, stat):
+            df = Player_Dict[player]
+            df = df[(df["GameDate"] >= slider[0]) & (df["GameDate"] <= slider[1])]
+            if df.empty:
+                st.error(f"No data available for {player}. Please try another player.")
+                return None
+            
+            fig = px.scatter(
+                                df,
+                                x="GameDate",
+                                y=stat,
+                                color="WL",
+                                color_discrete_sequence=["red", "green"],
+                                title=f"{player} {stat} by Game",
+                            )
+            return fig
+        
+        return (selected_player, selected_stat, plot_data)
+                            
+    if view_mode == "Player Stats":
+        selection, selected_stat, plot_data = view_player_stats()
+    
+    elif view_mode == "Team Stats":
+        selection, selected_stat, plot_data = view_team_stats()
+
+    fig = plot_data(selection, selected_stat)
+    st.plotly_chart(fig)
+
+elif page_select == "ML Models":
+    st.write("ML Models Page")
+
+elif page_select == "Simulations":
+    st.write("Simulations Page")
 
 # region
 # else:
