@@ -72,12 +72,32 @@ team_data = teams.get_teams()
 Teams_IDs = {team["full_name"]: team["id"] for team in team_data}
 Team_Dict = {}
 
-
 player_data = players.get_players()
 active_players = [player for player in player_data if player["is_active"]]
 Player_IDs = {player["full_name"]: player["id"] for player in active_players}
 Player_Dict = {}
 
+# Dirty Session State Caching
+# region
+st.session_state.Team_Dict = Team_Dict
+st.session_state.Player_Dict = Player_Dict
+st.session_state.Teams_IDs = Teams_IDs
+st.session_state.Player_IDs = Player_IDs
+st.session_state.player_stats = player_stats
+st.session_state.active_players = active_players
+# endregion
+
+# streamlit helper functions
+#region
+# check if key is in session state, if not add it
+# useful for updating session state with persistence without needless updates
+def update_session_state(key, variable):
+    if key not in st.session_state or variable != st.session_state[key]:
+        st.session_state[key] = variable
+#endregion
+
+# Data fetching functions
+#region
 @st.cache_data
 def get_team_data(team_name):
     tmp = fetch_team_data_with_delays({team_name: Teams_IDs[team_name]})
@@ -91,6 +111,7 @@ def get_player_data(player_name):
     tmp_cln = {player_name : clean_df(tmp[player_name])}
     Player_Dict.update(tmp_cln)
     return Player_Dict
+#endregion
 
 def date_slider(dates):
     min_date = dates.min().to_pydatetime()
@@ -189,43 +210,39 @@ if page_select == "Simple Graphs":
     fig = plot_data(selection, selected_stat)
     st.plotly_chart(fig)
 
+
 elif page_select == "ML Models":
-    st.write("ML Models Page")
-    st.selectbox("Select Model", ["K-Nearest Neighbors", "Support Vector Machine"])
 
-    inputs = []
-    X = DataFrame()
+    import ML_Model_Page
+    
+    if ML_Model_Page.setup():
+        ML_Model_Page.is_Player()
 
-    @st.cache_data
-    def select_X(Player_Dict=Player_Dict, Team_Dict=Team_Dict):
-        nms = [x["full_name"] for x in active_players]
-        obj_opts = nms + list(Teams_IDs.keys())
-        select_obj = st.selectbox("Select Entity", obj_opts)
+    else:
+        st.write("Team Model Prediction Needed")
 
+    # #region
 
-        col1, col2 = st.columns(2)
+    #         i = 0
+    #         select_stat = st.selectbox("Select Input", player_stats)
+    #         if not select_obj in Player_Dict.keys():
+    #             Player_Dict = get_player_data(select_obj)
+    #         df = Player_Dict[select_obj]
+    #         X = concat([X, df[select_stat]], axis=1)
 
-        is_Player = select_obj in nms
-        
-        if is_Player:
-            i = 0
-            select_stat = st.selectbox("Select Input", player_stats)
-            if not select_obj in Player_Dict.keys():
-                Player_Dict = get_player_data(select_obj)
-            df = Player_Dict[select_obj]
-            X = concat([X, df[select_stat]], axis=1)
-
-            with col1:
-                txt = st.write(select_stat, key=f"stat_{i}")
+    #         with col1:
+    #             txt = st.write(select_stat, key=f"stat_{i}")
             
-            with col2:
-                bt = st.button("Dead Code-Remove Stat")
+    #         with col2:
+    #             bt = st.button("Dead Code-Remove Stat")
             
-            st.write(X.columns)
+    #         st.write(X.columns)
 
             
-            return (txt, bt)
-    inputs.append(select_X())
+    #         return (txt, bt)
+    # inputs.append(select_X())
+
+    #endregion
 
 elif page_select == "Simulations":
     st.write("Simulations Page")
