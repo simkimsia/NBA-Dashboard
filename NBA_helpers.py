@@ -1,6 +1,44 @@
 import re
 import pandas as pd
 
+player_stats = [
+    "MIN",
+    "FGM",
+    "FGA",
+    "FG_PCT",
+    "FG3M",
+    "FG3A",
+    "FG3_PCT",
+    "FTM",
+    "FTA",
+    "FT_PCT",
+    "OREB",
+    "DREB",
+    "REB",
+    "AST",
+    "STL",
+    "BLK",
+    "TOV",
+    "PF",
+    "PTS",
+    "PLUS_MINUS",
+]
+team_stats = [
+    "W",
+    "L",
+    "W_PCT",
+    "PTS",
+    "REB",
+    "AST",
+    "FG_PCT",
+    "FG3_PCT",
+    "FT_PCT",
+    "STL",
+    "BLK",
+    "TOV",
+    "PF",
+]
+
 def map_matchup(x):
     homeMatch = re.compile("(\w+) vs. (\w+)")
     awayMatch = re.compile("(\w+) @ (\w+)")

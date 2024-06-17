@@ -8,6 +8,9 @@ node_modules/
 # Created by https://www.gitignore.io/api/python
 # Edit at https://www.gitignore.io/?templates=python
 
+### Dan's Local Env ###
+Dev_NoUI.ipynb
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
