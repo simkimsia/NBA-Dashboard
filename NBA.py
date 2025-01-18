@@ -30,6 +30,7 @@ from NBA_helpers import clean_df
 
 
 # Define stats options
+# this is static and should be chaced
 player_stats = [
     "MIN",
     "FGM",
@@ -68,11 +69,20 @@ team_stats = [
     "PF",
 ]
 
-team_data = teams.get_teams()
+@st.cache_resource
+def get_teams() :
+    return teams.get_teams()
+
+@st.cache_resource
+def get_players() :
+    return players.get_players()
+
+
+team_data = get_teams()
 Teams_IDs = {team["full_name"]: team["id"] for team in team_data}
 Team_Dict = {}
 
-player_data = players.get_players()
+player_data = get_players()
 active_players = [player for player in player_data if player["is_active"]]
 Player_IDs = {player["full_name"]: player["id"] for player in active_players}
 Player_Dict = {}
@@ -113,11 +123,12 @@ def get_player_data(player_name):
     return Player_Dict
 #endregion
 
-def date_slider(dates):
+@st.cache_data
+def slct_dates(dates):
     min_date = dates.min().to_pydatetime()
     max_date = dates.max().to_pydatetime()
     step = datetime.timedelta(days=1)
-    return st.slider("Select Date Range", value=(min_date,max_date), step=step, format='MMM DD, YYYY')
+    return (min_date, max_date, step)
 
 # Fetch game log data for teams with delays
 team_data = fetch_team_data_with_delays(Teams_IDs)
@@ -180,7 +191,8 @@ if page_select == "Simple Graphs":
         if not selected_player in Player_Dict.keys():
             Player_Dict = get_player_data(selected_player)
         Player_df = Player_Dict[selected_player]
-        slider = date_slider(Player_df["GameDate"])
+        dts = slct_dates(Player_df["GameDate"])
+        slider = st.slider("Select Date Range", value=(dts[0],dts[1]), step=dts[2], format='MMM DD, YYYY')
 
         def plot_data(player, stat):
             df = Player_Dict[player]

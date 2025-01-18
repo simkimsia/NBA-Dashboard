@@ -4,12 +4,15 @@ node_modules/
 *.egg-info/
 .ipynb_checkpoints
 *.tsbuildinfo
+.gitignore
 
 # Created by https://www.gitignore.io/api/python
 # Edit at https://www.gitignore.io/?templates=python
 
 ### Dan's Local Env ###
 Dev_NoUI.ipynb
+pipeline.py
+plygrnd.ipynb
 
 ### Python ###
 # Byte-compiled / optimized / DLL files

@@ -112,8 +112,7 @@ def is_Player():
             model = SVC()
         model.fit(X, tar)
         fig, ax = plt.subplots()
-        # TODO:: adjust labels for more than 2 features
-        DecisionBoundaryDisplay.from_estimator(
+        display = DecisionBoundaryDisplay.from_estimator(
             model, 
             X, 
             response_method="predict", 
@@ -121,23 +120,24 @@ def is_Player():
             xlabel=cols[0],
             ylabel=cols[1]
         )
-
+        display.plot()
         if shp[1] > 2:
             st.write("More than 2 features, plot has been adjusted")
             if shp[1] == 3:
-                plt.scatter(X[:, 0], X[:, 1], c=X[:, 2])
+                ax.scatter(X[:, 0], X[:, 1], c=tar, edgecolor="black")
                 plt.legend(cols[2])
-                st.write(f"Coloring by {X.columns[2]}")
-            elif shp[1] == 4:
-                plt.scatter(X[:, 0], X[:, 1], c=X[:, 2], s=X[:, 3])
-                plt.legend(cols[2:3])
-                st.write(f"Coloring by {X.columns[2]} and sizing by {X.columns[3]}")
+                st.write(f"Coloring by {tar}")
+            # elif shp[1] == 4:
+            #     display.ax_.scatter(X[:, 0], X[:, 1], c=X[:, 2], s=X[:, 3])
+            #     plt.legend(cols[2:3])
+            #     st.write(f"Coloring by {X.columns[2]} and sizing by {X.columns[3]}")
             else:
                 st.write("Too many features to plot")
         plt.title(f"{m} Decision Boundary\nTarget {tname}\nFeatures {' '.join(cols.tolist())}")
         plt.xlabel = cols[0]
         plt.ylabel = cols[1]
-        # plt.colorbar()
+        # plt.show()
+        # display.colorbar()
         st.pyplot(fig)
 
     st.button("Run Model", on_click=run_model)
